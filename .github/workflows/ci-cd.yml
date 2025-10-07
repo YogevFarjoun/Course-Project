@@ -1,0 +1,141 @@
+name: CI/CD - Vite React (Docker)
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*", "release-*"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  IMAGE_NAME: vite-react-app
+  IMAGE_REF: yogevfarjoun/vite-react-app # <-- עדכן לשם האמיתי שלך בדוקר אם שונה
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Lint (optional)
+        run: npm run lint --if-present
+
+      - name: Tests (optional)
+        run: npm test --if-present
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Upload dist (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: ignore
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [test-and-build]
+    timeout-minutes: 20
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_REF }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+            type=ref,event=tag
+            type=ref,event=branch
+
+      - name: Build & Push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile # <-- אם ה-Dockerfile ב-frontend, עדכן לשם
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Generate build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.IMAGE_REF }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_REF }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          artifact-name: sbom-${{ github.sha }}.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-*.spdx.json
+
+  security:
+    if: ${{ secrets.SNYK_TOKEN != '' }} # <-- ירוץ רק אם יש סיקרט
+    runs-on: ubuntu-latest
+    needs: [docker]
+    timeout-minutes: 20
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Snyk OSS (Node deps)
+        uses: snyk/actions/node@master
+        with:
+          args: --severity-threshold=high
+        continue-on-error: true
+
+      - name: Snyk Container (Docker image)
+        uses: snyk/actions/docker@master
+        with:
+          image: ${{ env.IMAGE_REF }}:latest
+          args: --file=Dockerfile --severity-threshold=high
+        continue-on-error: true
