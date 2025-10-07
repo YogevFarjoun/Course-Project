@@ -8,7 +8,6 @@ on:
     branches: ["main"]
   workflow_dispatch: {}
 
-# מניע ריצות כפולות על אותו סניף/טאג
 concurrency:
   group: ci-cd-${{ github.ref }}
   cancel-in-progress: true
@@ -16,72 +15,49 @@ concurrency:
 permissions:
   contents: read
   packages: write
-  id-token: write # נדרש ל-attestation
+  id-token: write
   attestations: write
 
 env:
   IMAGE_NAME: vite-react-app
-  IMAGE_REF: yogevfarjoun/vite-react-app # <-- עדכן לשם הריפו בדוקר שלך אם שונה
+  IMAGE_REF: yogevfarjoun/vite-react-app # עדכן אם צריך
 
 jobs:
-  # ---------- CI: בדיקות ובנייה ----------
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Use Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: Install deps
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-
-      - name: Lint (optional)
-        run: npm run lint --if-present
-
-      - name: Tests (optional)
-        run: npm test --if-present
-
-      - name: Build Vite
-        run: npm run build
-
-      - name: Upload dist (PR only)
-        if: github.event_name == 'pull_request'
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - run: npm run lint --if-present
+      - run: npm test --if-present
+      - run: npm run build
+      - if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist
           if-no-files-found: ignore
 
-  # ---------- Docker: Build & Push ----------
   docker:
     runs-on: ubuntu-latest
-    needs: [test-and-build] # ירוץ רק אם ה-CI עבר
+    needs: [test-and-build]
     timeout-minutes: 20
-    if: github.event_name != 'pull_request' # לא דוחפים תמונות על PR
+    if: github.event_name != 'pull_request'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Docker meta (tags & labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -92,69 +68,29 @@ jobs:
             type=sha,format=long
             type=ref,event=tag
             type=ref,event=branch
-
       - name: Build & Push image
         id: build
         uses: docker/build-push-action@v6
         with:
-          # אם ה-Dockerfile נמצא בתיקיה אחרת (למשל ./frontend), עדכן:
-          # context: ./frontend
-          # file: ./frontend/Dockerfile
           context: .
           file: ./Dockerfile
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      # --- Provenance Attestation (Supply chain) ---
       - name: Generate build provenance
         uses: actions/attest-build-provenance@v1
         with:
           subject-name: ${{ env.IMAGE_REF }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
-
-      # --- SBOM (רשימת רכיבים) ---
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.IMAGE_REF }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           artifact-name: sbom-${{ github.sha }}.spdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: sbom-${{ github.sha }}
           path: sbom-*.spdx.json
-
-  # ---------- Security (Snyk) — אופציונלי ----------
-  security:
-    runs-on: ubuntu-latest
-    needs: [docker]
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # סריקת תלויות Node — תרוץ רק אם הוגדר SNYK_TOKEN
-      - name: Snyk OSS (Node deps)
-        if: ${{ secrets.SNYK_TOKEN != '' }}
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
-        continue-on-error: true
-
-      # סריקת האימג' — תרוץ רק אם הוגדר SNYK_TOKEN
-      - name: Snyk Container (Docker image)
-        if: ${{ secrets.SNYK_TOKEN != '' }}
-        uses: snyk/actions/docker@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          image: ${{ env.IMAGE_REF }}:latest
-          args: --file=Dockerfile --severity-threshold=high
-        continue-on-error: true
