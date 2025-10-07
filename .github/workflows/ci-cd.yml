@@ -132,7 +132,7 @@ jobs:
           path: sbom-*.spdx.json
 
   # --- Security Vulnerability Scanning (Snyk) ---
-    snyk-scan:
+  snyk-scan:
     runs-on: ubuntu-latest
     needs: [docker]
     timeout-minutes: 15
@@ -159,6 +159,3 @@ jobs:
 
       - name: Snyk container test (high+)
         run: snyk container test ${{ env.IMAGE_REF }}:latest --file=Dockerfile --severity-threshold=high
-
-      - name: Scan image (ignore specific vulnerabilities)
-        run: snyk container test ${{ env.IMAGE_REF }}:latest --file=Dockerfile --severity-threshold=high --ignore-policy
