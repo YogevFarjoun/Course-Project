@@ -20,25 +20,41 @@ permissions:
 
 env:
   IMAGE_NAME: vite-react-app
-  IMAGE_REF: yogevfarjoun/vite-react-app # עדכן אם צריך
+  IMAGE_REF: yogevfarjoun/vite-react-app # עדכן אם שם הריפו שלך בדוקר שונה
 
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
-      - run: npm run lint --if-present
-      - run: npm test --if-present
-      - run: npm run build
-      - if: github.event_name == 'pull_request'
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Lint (optional)
+        run: npm run lint --if-present
+
+      - name: Tests (optional)
+        run: npm test --if-present
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Upload dist (PR only)
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -51,13 +67,19 @@ jobs:
     timeout-minutes: 20
     if: github.event_name != 'pull_request'
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
+          registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker meta (tags & labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -68,6 +90,7 @@ jobs:
             type=sha,format=long
             type=ref,event=tag
             type=ref,event=branch
+
       - name: Build & Push image
         id: build
         uses: docker/build-push-action@v6
@@ -78,19 +101,32 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # --- Provenance Attestation (generate + store as artifact) ---
       - name: Generate build provenance
         uses: actions/attest-build-provenance@v1
         with:
           subject-name: ${{ env.IMAGE_REF }}
           subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
+          push-to-registry: false
+
+      - name: Upload provenance (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance-${{ github.sha }}
+          path: "**/*.intoto.jsonl"
+          if-no-files-found: ignore
+
+      # --- SBOM (Software Bill of Materials) ---
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.IMAGE_REF }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           artifact-name: sbom-${{ github.sha }}.spdx.json
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
         with:
           name: sbom-${{ github.sha }}
           path: sbom-*.spdx.json
