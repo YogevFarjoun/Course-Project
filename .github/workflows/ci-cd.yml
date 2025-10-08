@@ -301,11 +301,11 @@ jobs:
   container:
     name: Container Build & Push (reusable)
     needs: [test-and-build, python-unit-tests, python-lint]
-    uses: YogevFarjoun/ci-shared/.github/workflows/build-push-and-scan.yml@main # ← החלף אם שם המשתמש/הריפו/הענף שונים
+    uses: YogevFarjoun/ci-shared-courseproject/.github/workflows/build-push-and-scan.yml@main
     with:
       image_name: vite-react-app
-      docker_namespace: yogevfarjoun # ← אם שם המשתמש בדוקר־האב שונה, עדכן כאן
-      registry_target: dockerhub # או nexus אם יש לך רג'יסטרי ציבורי
+      docker_namespace: yogevfarjoun
+      registry_target: dockerhub
       nexus_repo: docker-hosted
       node_version: "20"
       run_snyk: true
