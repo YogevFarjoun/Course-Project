@@ -20,9 +20,10 @@ permissions:
 
 env:
   IMAGE_NAME: vite-react-app
-  IMAGE_REF: yogevfarjoun/vite-react-app # עדכן אם שם הריפו שלך בדוקר שונה
+  IMAGE_REF: yogevfarjoun/vite-react-app 
 
 jobs:
+  # ---------- CI (Node: build) ----------
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -61,9 +62,49 @@ jobs:
           path: dist
           if-no-files-found: ignore
 
+  # ---------- CI (Python: unit tests) ----------
+  python-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      - name: Install test requirements
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install pytest unittest2
+          fi
+
+      - name: Run unit tests (pytest)
+        run: python -m pytest --junitxml results.xml tests/*.py
+
+      - name: Upload test report (JUnit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-tests-junit-${{ github.sha }}
+          path: results.xml
+          if-no-files-found: warn
+
+  # ---------- Docker: build & push ----------
   docker:
     runs-on: ubuntu-latest
-    needs: [test-and-build]
+    needs: [test-and-build, python-unit-tests]
     timeout-minutes: 20
     if: github.event_name != 'pull_request'
     steps:
@@ -102,7 +143,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      # --- Provenance Attestation (generate + store as artifact) ---
       - name: Generate build provenance
         uses: actions/attest-build-provenance@v1
         with:
@@ -117,7 +157,6 @@ jobs:
           path: "**/*.intoto.jsonl"
           if-no-files-found: ignore
 
-      # --- SBOM (Software Bill of Materials) ---
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -131,14 +170,14 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom-*.spdx.json
 
-  # --- Security Vulnerability Scanning (Snyk) ---
+  # ---------- Security Vulnerability Scanning (Snyk) ----------
   snyk-scan:
     runs-on: ubuntu-latest
     needs: [docker]
     timeout-minutes: 15
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      SNYK_ORG: ${{ secrets.SNYK_ORG }} # אופציונלי; צור רק אם יש לך ארגון
+      SNYK_ORG: ${{ secrets.SNYK_ORG }}
     steps:
       - uses: actions/checkout@v4
 

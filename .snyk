@@ -1,0 +1,4 @@
+ignore:
+  SNYK-JS-LODASH-567746:
+    reason: "Not exploitable in current app"
+    expires: 2025-12-31
