@@ -1,0 +1,14 @@
+services:
+  nexus:
+    image: sonatype/nexus3:3.68.1
+    platform: linux/amd64
+    container_name: nexus
+    restart: unless-stopped
+    ports:
+      - "8081:8081" # UI
+      - "5001:5000" # Docker registry נגיש מבחוץ ב-5001
+    volumes:
+      - nexus-data:/nexus-data
+
+volumes:
+  nexus-data:

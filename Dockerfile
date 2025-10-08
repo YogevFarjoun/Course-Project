@@ -2,7 +2,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# העתקת קבצי המניפסט והתקנת תלויות
+# התקנת תלויות
 COPY package*.json ./
 RUN npm ci
 
@@ -10,17 +10,17 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# ---- שלב 2: Serve ב-Nginx ----
+# ---- שלב 2: Serve באמצעות Nginx ----
 FROM nginx:alpine
 
-# העתקת קובץ הקונפיגורציה המותאם
+# העתקת קובץ קונפיגורציה מותאם אישית (ל-SPA כמו React/Vite)
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# העתקת פלט ה-build של Vite
+# העתקת הקבצים שנבנו מהשלב הראשון
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # פתיחת הפורט
 EXPOSE 80
 
-# הפעלת Nginx
+# הרצת Nginx במצב foreground
 CMD ["nginx", "-g", "daemon off;"]
