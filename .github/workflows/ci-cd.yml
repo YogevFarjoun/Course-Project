@@ -20,7 +20,7 @@ permissions:
 
 env:
   IMAGE_NAME: vite-react-app
-  IMAGE_REF: yogevfarjoun/vite-react-app 
+  IMAGE_REF: yogevfarjoun/vite-react-app
 
 jobs:
   # ---------- CI (Node: build) ----------
@@ -101,10 +101,50 @@ jobs:
           path: results.xml
           if-no-files-found: warn
 
+  # ---------- CI (Python: lint) ----------
+  python-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      - name: Install pylint
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install pylint
+          fi
+
+      - name: Run pylint
+        run: |
+          set -e
+          found_py=$(ls -1 *.py 2>/dev/null | wc -l || true)
+          if [ "$found_py" -gt 0 ]; then
+            python -m pylint *.py
+          fi
+          found_tests=$(ls -1 tests/*.py 2>/dev/null | wc -l || true)
+          if [ "$found_tests" -gt 0 ]; then
+            python -m pylint tests/*.py
+          fi
+
   # ---------- Docker: build & push ----------
   docker:
     runs-on: ubuntu-latest
-    needs: [test-and-build, python-unit-tests]
+    needs: [test-and-build, python-unit-tests, python-lint]
     timeout-minutes: 20
     if: github.event_name != 'pull_request'
     steps:
