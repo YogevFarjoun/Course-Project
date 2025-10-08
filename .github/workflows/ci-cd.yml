@@ -251,15 +251,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Assert image_ref present
+        run: |
+          echo "IMAGE_REF from docker job: ${{ needs.docker.outputs.image_ref }}"
+          test -n "${{ needs.docker.outputs.image_ref }}"
+
       - name: Install Snyk via npm
         run: npm install -g snyk
-
-      - name: Verify SNYK_TOKEN presence
-        run: |
-          if [ -z "$SNYK_TOKEN" ]; then
-            echo "SNYK_TOKEN is missing"; exit 1
-          fi
-          echo "SNYK_TOKEN length: $(printf "%s" "$SNYK_TOKEN" | wc -c)"
 
       - name: Snyk auth
         run: snyk auth "$SNYK_TOKEN"
@@ -297,6 +295,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      - name: Assert image_ref present
+        run: |
+          echo "IMAGE_REF from docker job: ${{ needs.docker.outputs.image_ref }}"
+          test -n "${{ needs.docker.outputs.image_ref }}"
 
       - name: Login to Docker Hub
         if: startsWith(needs.docker.outputs.image_ref, 'docker.io/')
