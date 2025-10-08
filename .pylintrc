@@ -1,9 +1,15 @@
+[MASTER]
+ignore=dist,node_modules,build,.venv,venv
+jobs=0
+
 [MESSAGES CONTROL]
-disable =
-    missing-module-docstring,
-    missing-function-docstring,
-    invalid-name,
-    too-few-public-methods
+# מכבים אזהרות "רעש" נפוצות לפרויקטים קטנים/דמו
+disable=
+    C0114,  # missing-module-docstring
+    C0115,  # missing-class-docstring
+    C0116,  # missing-function-docstring
+    C0103,  # invalid-name
+    R0903   
 
 [FORMAT]
 max-line-length=100
