@@ -52,7 +52,7 @@ function App() {
     <div
       style={{
         position: "relative",
-        background: "white",
+        background: "black",
         border: "1px solid black",
         padding: "2rem",
         margin: "1rem",
