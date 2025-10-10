@@ -60,9 +60,10 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-${{ github.sha }}-${{ github.run_attempt }}-${{ github.job }}
           path: dist
           if-no-files-found: ignore
+          overwrite: true
 
   # ---------- CI (Python: unit tests) ----------
   python-unit-tests:
@@ -99,9 +100,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-tests-junit-${{ github.sha }}
+          name: python-tests-junit-${{ github.sha }}-${{ github.run_attempt }}-${{ github.job }}
           path: results.xml
           if-no-files-found: warn
+          overwrite: true
 
   # ---------- CI (Python: lint) ----------
   python-lint:
@@ -223,9 +225,10 @@ jobs:
       - name: Upload provenance (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: provenance-${{ github.sha }}
+          name: provenance-${{ github.sha }}-${{ github.run_attempt }}-${{ github.job }}
           path: "**/*.intoto.jsonl"
           if-no-files-found: ignore
+          overwrite: true
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
@@ -237,8 +240,9 @@ jobs:
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ github.sha }}
+          name: sbom-${{ github.sha }}-${{ github.run_attempt }}-${{ github.job }}
           path: sbom-*.spdx.json
+          overwrite: true
 
   # ---------- Security Vulnerability Scanning (Snyk) ----------
   snyk-scan:
@@ -294,19 +298,20 @@ jobs:
       - name: Upload Snyk report
         uses: actions/upload-artifact@v4
         with:
-          name: snyk-report-${{ github.sha }}
+          name: snyk-report-${{ github.sha }}-${{ github.run_attempt }}-${{ github.job }}
           path: snyk-report.json
           if-no-files-found: ignore
           overwrite: true
 
+  # ---------- Reusable workflow call (Container Build & Push) ----------
   container:
     name: Container Build & Push (reusable)
-    needs: [test-and-build, python-unit-tests, python-lint] # עדכן לפי שמות ה-jobs אצלך
+    needs: [test-and-build, python-unit-tests, python-lint]
     uses: YogevFarjoun/ci-shared-courseproject/.github/workflows/build-push-and-scan.yml@main
     with:
       image_name: vite-react-app
-      docker_namespace: yogevfarjoun # המשתמש/ה־namespace שלך בדוקר האב
-      registry_target: dockerhub # או nexus אם יש לך רג'יסטרי ציבורי ונגיש
+      docker_namespace: yogevfarjoun
+      registry_target: dockerhub
       nexus_repo: docker-hosted
       node_version: "20"
       run_snyk: true
@@ -322,7 +327,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Resolve IMAGE_REF from reusable outputs (fallback safe)
-        # אם אין outputs (למשל בהרצה ידנית) נשתמש בברירת מחדל
         run: |
           IMAGE_REF="${{ needs.container.outputs.image_ref }}"
           if [ -z "$IMAGE_REF" ]; then
