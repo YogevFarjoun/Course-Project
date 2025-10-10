@@ -297,6 +297,7 @@ jobs:
           name: snyk-report-${{ github.sha }}
           path: snyk-report.json
           if-no-files-found: ignore
+          overwrite: true
 
   container:
     name: Container Build & Push (reusable)
