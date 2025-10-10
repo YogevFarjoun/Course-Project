@@ -300,12 +300,12 @@ jobs:
 
   container:
     name: Container Build & Push (reusable)
-    needs: [test-and-build, python-unit-tests, python-lint]
+    needs: [test-and-build, python-unit-tests, python-lint] # עדכן לפי שמות ה-jobs אצלך
     uses: YogevFarjoun/ci-shared-courseproject/.github/workflows/build-push-and-scan.yml@main
     with:
       image_name: vite-react-app
-      docker_namespace: yogevfarjoun
-      registry_target: dockerhub
+      docker_namespace: yogevfarjoun # המשתמש/ה־namespace שלך בדוקר האב
+      registry_target: dockerhub # או nexus אם יש לך רג'יסטרי ציבורי ונגיש
       nexus_repo: docker-hosted
       node_version: "20"
       run_snyk: true
@@ -321,10 +321,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Resolve IMAGE_REF from reusable outputs (fallback safe)
+        # אם אין outputs (למשל בהרצה ידנית) נשתמש בברירת מחדל
         run: |
           IMAGE_REF="${{ needs.container.outputs.image_ref }}"
           if [ -z "$IMAGE_REF" ]; then
-            IMAGE_REF="docker.io/yogevfarjoun/vite-react-app"  # ← עדכן אם צריך
+            IMAGE_REF="docker.io/yogevfarjoun/vite-react-app"
           fi
           echo "IMAGE_REF=$IMAGE_REF" >> $GITHUB_ENV
           echo "Resolved IMAGE_REF=$IMAGE_REF"
